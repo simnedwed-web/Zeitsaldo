@@ -98,6 +98,31 @@
   }
   button.icon-btn:hover{ border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
 
+  /* Punch card (Kommen/Gehen) */
+  .punch-card{
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px 20px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-sm);
+  }
+  .punch-label{ font-size: 12.5px; color: var(--text-soft); margin-bottom: 6px; }
+  .punch-times{ display:flex; gap: 16px; flex-wrap: wrap; }
+  .punch-time{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .punch-time-empty{ font-size: 13px; color: var(--text-soft); }
+  .punch-btn{ font-size: 15px; padding: 12px 26px; white-space: nowrap; }
+
   /* Stat row */
   .stats{
     display: grid;
@@ -1088,6 +1113,8 @@ function render(){
     ${pdfExportOpen ? renderPdfPanel() : ''}
     ${syncOpen ? renderSyncPanel() : ''}
 
+    ${renderPunchCard()}
+
     <div class="stats">
       <div class="stat">
         <div class="stat-label">Überstunden-Saldo</div>
@@ -1521,6 +1548,42 @@ function renderZaTab(year){
 }
 
 
+function renderPunchCard(){
+  const entry = state.entries[todayStr];
+  const isOtherType = entry && entry.type !== 'work';
+
+  if(isOtherType){
+    const wd = weekdayMon0(todayObj);
+    const typeLabel = typeLabelFor(entry, todayStr, wd >= 5, holidayName(todayStr));
+    return `
+      <div class="punch-card">
+        <div class="punch-label">Heute ist erfasst als: <strong>${escapeHtml(typeLabel)}</strong></div>
+        <button class="btn btn-ghost btn-sm" id="punchEditToday">Im Kalender bearbeiten</button>
+      </div>
+    `;
+  }
+
+  const start = entry && entry.start;
+  const end = entry && entry.end;
+  let label;
+  if(!start) label = 'Kommen';
+  else if(!end) label = 'Gehen';
+  else label = 'Gehen aktualisieren';
+
+  return `
+    <div class="punch-card">
+      <div>
+        <div class="punch-label">Heute</div>
+        <div class="punch-times">
+          ${start ? `<span class="punch-time">Kommen ${start}</span>` : `<span class="punch-time-empty">Noch nicht gestempelt</span>`}
+          ${end ? `<span class="punch-time">Gehen ${end}</span>` : ''}
+        </div>
+      </div>
+      <button class="btn btn-primary punch-btn" id="punchBtn">${label}</button>
+    </div>
+  `;
+}
+
 function renderSettingsPanel(){
   return `
     <div class="settings-panel">
@@ -1717,6 +1780,36 @@ function attachHandlers(){
 
   const syncToggle = document.getElementById('syncToggle');
   if(syncToggle) syncToggle.onclick = () => { syncOpen = !syncOpen; settingsOpen = false; pdfExportOpen = false; render(); };
+
+  const punchBtn = document.getElementById('punchBtn');
+  if(punchBtn) punchBtn.onclick = async () => {
+    const now = new Date();
+    const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    const existing = state.entries[todayStr];
+    const entry = (existing && existing.type === 'work') ? { ...existing } : { type: 'work', breakMin: 15 };
+    if(!entry.start){
+      entry.start = timeStr;
+    } else if(!entry.end){
+      entry.end = timeStr;
+    } else {
+      entry.end = timeStr;
+    }
+    state.entries[todayStr] = entry;
+    await saveState();
+  };
+
+  const punchEditBtn = document.getElementById('punchEditToday');
+  if(punchEditBtn) punchEditBtn.onclick = () => {
+    selectedDate = todayStr;
+    editorDraft = null;
+    editorNoteDraft = null;
+    editorTerminDraft = null;
+    render();
+    setTimeout(() => {
+      const panel = document.getElementById('editorPanel');
+      if(panel) panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+    }, 0);
+  };
 
   const generatePdfBtn = document.getElementById('generatePdf');
   if(generatePdfBtn) generatePdfBtn.onclick = () => exportPdf();
