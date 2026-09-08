@@ -1325,7 +1325,7 @@ function escapeHtml(str){
 
 function renderEditor(){
   const entry = state.entries[selectedDate] || {};
-  const mode = editorDraft ? editorDraft.mode : (entry.type || 'work');
+  const mode = editorDraft ? editorDraft.mode : (entry.type && entry.type !== 'note' ? entry.type : null);
   const start = editorDraft ? editorDraft.start : (entry.start || DEFAULT_START);
   const end = editorDraft ? editorDraft.end : (entry.end || (mode==='work' ? computeDefaultEnd(selectedDate,start) : ''));
   const breakMin = editorDraft ? editorDraft.breakMin : (entry.breakMin !== undefined ? entry.breakMin : 15);
@@ -1346,6 +1346,7 @@ function renderEditor(){
         <button type="button" data-mode="za" class="${mode==='za'?'active':''}">ZA</button>
         <button type="button" data-mode="krank" class="${mode==='krank'?'active':''}">Krankenstand</button>
       </div>
+      ${!mode ? `<div class="soll-line">Kein Tagestyp gewählt – es werden keine Arbeitszeiten eingetragen. Nur Termin und/oder Notiz werden gespeichert.</div>` : ''}
       ${mode==='work' ? `
         <div class="field-row">
           <div class="field">
@@ -1903,7 +1904,8 @@ function attachHandlers(){
 
   const saveBtn = document.getElementById('saveEntry');
   if(saveBtn) saveBtn.onclick = async () => {
-    const mode = editorDraft ? editorDraft.mode : (state.entries[selectedDate]?.type || 'work');
+    const existingEntry = state.entries[selectedDate];
+    const mode = editorDraft ? editorDraft.mode : (existingEntry && existingEntry.type !== 'note' ? existingEntry.type : null);
     const noteVal = document.getElementById('fNote').value.trim();
     const terminVal = document.getElementById('fTermin').value.trim();
     const noteField = noteVal ? { note: noteVal } : {};
@@ -1914,7 +1916,7 @@ function attachHandlers(){
       state.entries[selectedDate] = { type: 'za', ...noteField, ...terminField };
     } else if(mode === 'krank'){
       state.entries[selectedDate] = { type: 'krank', ...noteField, ...terminField };
-    } else {
+    } else if(mode === 'work'){
       const start = document.getElementById('fStart').value;
       const end = document.getElementById('fEnd').value;
       const breakMin = Number(document.getElementById('fBreak').value)||0;
@@ -1923,6 +1925,13 @@ function attachHandlers(){
         return;
       }
       state.entries[selectedDate] = { type: 'work', start, end, breakMin, ...noteField, ...terminField };
+    } else {
+      // Kein Tagestyp gewählt: nur Termin/Notiz speichern, keine Arbeitszeiten
+      if(noteVal || terminVal){
+        state.entries[selectedDate] = { type: 'note', ...noteField, ...terminField };
+      } else {
+        delete state.entries[selectedDate];
+      }
     }
     editorDraft = null;
     editorNoteDraft = null;
