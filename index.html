@@ -163,6 +163,14 @@
     padding-top: 8px;
   }
   .weather-precip{ color: var(--vacation); }
+  .weather-extra{
+    display:flex;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 10.5px;
+    color: var(--text-soft);
+    flex-wrap: wrap;
+  }
   .weather-loading, .weather-error{
     font-size: 12px;
     color: var(--text-soft);
@@ -755,7 +763,7 @@ const TABS = [
 let state = null;
 let viewYear, viewMonth; // viewMonth 0-11
 let summaryYear;
-let activeTab = 'quartal';
+let activeTab = 'ueberstunden';
 let selectedDate = null; // 'YYYY-MM-DD'
 let editorDraft = null;  // { mode, start, end, breakMin }
 let editorNoteDraft = null; // preserves typed note text across mode switches
@@ -1017,7 +1025,7 @@ function syncBadgeText(){
 async function fetchWeather(){
   weatherStatus = 'loading';
   try{
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FVienna&forecast_days=1`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max&timezone=Europe%2FVienna&forecast_days=1`;
     const res = await fetch(url);
     if(!res.ok) throw new Error(`Wetter-API Fehler (${res.status})`);
     const data = await res.json();
@@ -1026,7 +1034,10 @@ async function fetchWeather(){
       code: data.current.weather_code,
       high: data.daily.temperature_2m_max[0],
       low: data.daily.temperature_2m_min[0],
-      precipChance: data.daily.precipitation_probability_max[0]
+      precipChance: data.daily.precipitation_probability_max[0],
+      sunrise: data.daily.sunrise[0],
+      sunset: data.daily.sunset[0],
+      uvIndex: data.daily.uv_index_max[0]
     };
     weatherStatus = 'ok';
   } catch(err){
@@ -1034,6 +1045,12 @@ async function fetchWeather(){
     weatherStatus = 'error';
   }
   render();
+}
+
+function fmtIsoTime(iso){
+  if(!iso) return '–';
+  const parts = iso.split('T');
+  return parts.length > 1 ? parts[1] : iso;
 }
 
 function weatherCategory(code){
@@ -1085,7 +1102,7 @@ function renderWeatherCard(){
   if(weatherStatus !== 'ok' || !weatherData){
     return `<div class="weather-card weather-loading">Lade Wetter für ${escapeHtml(WEATHER_LOCATION_NAME)} …</div>`;
   }
-  const { temp, code, high, low, precipChance } = weatherData;
+  const { temp, code, high, low, precipChance, sunrise, sunset, uvIndex } = weatherData;
   const category = weatherCategory(code);
   return `
     <div class="weather-card">
@@ -1098,6 +1115,11 @@ function renderWeatherCard(){
         </div>
       </div>
       <div class="weather-sub">Heute ${Math.round(low)}° / ${Math.round(high)}° · <span class="weather-precip">${Math.round(precipChance)}% Regenwahrscheinlichkeit</span></div>
+      <div class="weather-extra">
+        <span>☀ ${fmtIsoTime(sunrise)}</span>
+        <span>🌙 ${fmtIsoTime(sunset)}</span>
+        <span>UV ${uvIndex !== undefined && uvIndex !== null ? Math.round(uvIndex) : '–'}</span>
+      </div>
     </div>
   `;
 }
