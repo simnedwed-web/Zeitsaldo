@@ -202,6 +202,32 @@
     flex-wrap: wrap;
   }
   .fuel-empty{ font-size: 11px; color: var(--text-soft); }
+  .fuel-list{ list-style:none; padding:0; margin:0; }
+  .fuel-list li{
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 11.5px;
+  }
+  .fuel-list li:last-child{ border-bottom:none; }
+  .fuel-list-row{
+    display:flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .fuel-station{ color: var(--text); font-weight: 600; }
+  .fuel-price{
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight:600;
+    color: var(--green);
+    flex-shrink:0;
+    white-space: nowrap;
+  }
+  .fuel-address{
+    color: var(--text-soft);
+    font-size: 10.5px;
+    margin-top: 2px;
+  }
   .holiday-list{ list-style:none; padding:0; margin:0; }
   .holiday-list li{
     display:flex;
@@ -302,6 +328,12 @@
     margin-top: 5px;
   }
   .stat-sparkline-wrap{ margin-top: 6px; line-height: 0; }
+  .stat-detail{
+    font-size: 10px;
+    color: var(--text-soft);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
   .stat-sparkline{ display: block; }
 
   /* Calendar */
@@ -869,6 +901,8 @@ const REPORT_NAME = 'Simon Nedwed';
 const WEATHER_LAT = 48.4103;
 const WEATHER_LON = 15.6111;
 const WEATHER_LOCATION_NAME = 'Krems an der Donau';
+const FUEL_LAT = WEATHER_LAT;
+const FUEL_LON = WEATHER_LON;
 const DEFAULT_START = '06:00';
 const DAY_NAMES = ['Mo','Di','Mi','Do','Fr','Sa','So'];
 const MONTH_NAMES = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
@@ -896,6 +930,8 @@ let syncStatus = null; // null | 'saving' | 'ok' | 'error'
 let syncMessage = '';
 let weatherData = null;
 let weatherStatus = 'idle'; // idle | loading | ok | error
+let fuelData = null;
+let fuelStatus = 'idle'; // idle | loading | ok | error
 let loadError = false;
 
 const todayObj = new Date();
@@ -1283,6 +1319,59 @@ function renderDailyStrip(dailyArr){
   `;
 }
 
+/* ---------- Spritpreise (E-Control, kein API-Key nötig) ---------- */
+
+async function fetchFuelPrices(){
+  fuelStatus = 'loading';
+  try{
+    const url = `https://api.e-control.at/sprit/1.0/search/gas-stations/by-address?latitude=${FUEL_LAT}&longitude=${FUEL_LON}&fuelType=DIE&includeClosed=false`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error(`Sprit-API Fehler (${res.status})`);
+    const data = await res.json();
+    const stations = (Array.isArray(data) ? data : [])
+      .filter(s => s.prices && s.prices.length && s.prices[0] && s.prices[0].amount != null)
+      .map(s => ({
+        name: s.name || 'Unbekannt',
+        price: s.prices[0].amount,
+        address: (s.location && s.location.address) || ''
+      }))
+      .sort((a,b) => a.price - b.price);
+    fuelData = { DIE: { label: 'Diesel', stations } };
+    fuelStatus = 'ok';
+  } catch(err){
+    console.error('Sprit-Fehler:', err);
+    fuelStatus = 'error';
+  }
+  render();
+}
+
+function renderFuelContent(){
+  if(fuelStatus === 'error'){
+    return `<div class="fuel-empty">Spritpreise konnten nicht geladen werden.</div>`;
+  }
+  if(fuelStatus !== 'ok' || !fuelData){
+    return `<div class="fuel-empty">Lade Spritpreise …</div>`;
+  }
+  const entry = fuelData.DIE;
+  if(!entry || entry.stations.length === 0){
+    return `<div class="fuel-empty">Keine Diesel-Preise gefunden.</div>`;
+  }
+  const top3 = entry.stations.slice(0, 3);
+  return `
+    <ul class="fuel-list">
+      ${top3.map(s => `
+        <li>
+          <div class="fuel-list-row">
+            <span class="fuel-station">${escapeHtml(s.name)}</span>
+            <span class="fuel-price">${s.price.toFixed(3).replace('.', ',')} €</span>
+          </div>
+          ${s.address ? `<div class="fuel-address">${escapeHtml(s.address)}</div>` : ''}
+        </li>
+      `).join('')}
+    </ul>
+  `;
+}
+
 function weatherCategory(code){
   if(code === 0) return 'clear';
   if(code === 1 || code === 2) return 'partly';
@@ -1435,6 +1524,11 @@ function renderWeatherCard(){
           <div class="weather-label">Nächste Termine</div>
           ${renderUpcomingAppointmentsContent()}
         </div>
+        <div class="weather-divider-h"></div>
+        <div class="weather-col-half">
+          <div class="weather-label">Diesel – 3 günstigste Tankstellen</div>
+          ${renderFuelContent()}
+        </div>
       </div>
     </div>
   `;
@@ -1517,6 +1611,13 @@ function krankDaysCount(year){
     if(entry.type === 'krank' && date.startsWith(String(year))) count++;
   }
   return count;
+}
+
+function krankDatesList(year){
+  return Object.entries(state.entries)
+    .filter(([date, entry]) => entry.type === 'krank' && date.startsWith(String(year)))
+    .map(([date]) => date)
+    .sort();
 }
 
 function weekRangeContaining(date){
@@ -2763,6 +2864,7 @@ function attachHandlers(){
   }
   if(migrated){ await saveState(); } else { render(); }
   fetchWeather();
+  fetchFuelPrices();
 })();
 </script>
 </body>
