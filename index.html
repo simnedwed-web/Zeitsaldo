@@ -1163,8 +1163,13 @@ async function fetchWeather(){
     if(!res.ok) throw new Error(`Wetter-API Fehler (${res.status})`);
     const data = await res.json();
 
-    let startIdx = data.hourly.time.indexOf(data.current.time);
-    if(startIdx === -1) startIdx = 0;
+    const nowLocal = new Date();
+    const nowHourStr = `${nowLocal.getFullYear()}-${pad(nowLocal.getMonth()+1)}-${pad(nowLocal.getDate())}T${pad(nowLocal.getHours())}:00`;
+    let startIdx = data.hourly.time.indexOf(nowHourStr);
+    if(startIdx === -1){
+      startIdx = data.hourly.time.findIndex(t => t >= nowHourStr);
+      if(startIdx === -1) startIdx = 0;
+    }
     const hourly = [];
     for(let i = startIdx+1; i <= startIdx+6 && i < data.hourly.time.length; i++){
       hourly.push({ time: data.hourly.time[i], temp: data.hourly.temperature_2m[i], code: data.hourly.weather_code[i] });
