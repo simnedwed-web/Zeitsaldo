@@ -494,6 +494,35 @@
     padding: 10px 0;
   }
 
+  /* Monthly bar chart */
+  .chart-card{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 12px 12px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-sm);
+  }
+  .month-bar-chart{ width: 100%; height: auto; display: block; }
+  .chart-legend{
+    display:flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--text-soft);
+  }
+  .legend-dot{
+    display:inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 3px;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .legend-dot-pos{ background: var(--green); }
+  .legend-dot-neg{ background: var(--red); }
+
   /* Summary table */
   .summary-table{
     width: 100%;
@@ -663,6 +692,7 @@ const REPORT_NAME = 'Simon Nedwed';
 const DEFAULT_START = '06:00';
 const DAY_NAMES = ['Mo','Di','Mi','Do','Fr','Sa','So'];
 const MONTH_NAMES = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const MONTH_SHORT = ['Jän','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
 const TABS = [
   { id: 'quartal', label: 'Quartal' },
   { id: 'ueberstunden', label: 'Überstunden' },
@@ -1202,6 +1232,52 @@ function render(){
   attachHandlers();
 }
 
+function renderMonthlyBarChart(summary){
+  const hasData = summary.some(m => m.days > 0);
+  if(!hasData){
+    return `<div class="empty">Für ${summaryYear} sind noch keine Arbeitstage erfasst.</div>`;
+  }
+
+  const W = 760, H = 220;
+  const padTop = 16, padBottom = 28, padSide = 8;
+  const chartH = H - padTop - padBottom;
+  const baseline = padTop + chartH / 2;
+  const halfH = chartH / 2 - 12;
+  const maxAbsHours = Math.max(1, ...summary.map(m => Math.abs(m.diff) / 60));
+  const scale = halfH / maxAbsHours;
+  const n = summary.length;
+  const gap = 6;
+  const barW = (W - padSide * 2 - gap * (n - 1)) / n;
+
+  let bars = '';
+  summary.forEach((m, i) => {
+    const hours = m.diff / 60;
+    const h = Math.max(Math.abs(hours) * scale, hours === 0 ? 0 : 2);
+    const x = padSide + i * (barW + gap);
+    const y = hours >= 0 ? baseline - h : baseline;
+    const color = hours >= 0 ? 'var(--green)' : 'var(--red)';
+    bars += `
+      <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="3" style="fill:${color}">
+        <title>${MONTH_SHORT[i]}: ${fmtDuration(m.diff)}</title>
+      </rect>
+      <text x="${(x + barW/2).toFixed(1)}" y="${H-10}" text-anchor="middle" font-size="10" fill="var(--text-soft)" font-family="'IBM Plex Sans', sans-serif">${MONTH_SHORT[i]}</text>
+    `;
+  });
+
+  return `
+    <div class="chart-card">
+      <svg viewBox="0 0 ${W} ${H}" class="month-bar-chart" preserveAspectRatio="xMidYMid meet">
+        <line x1="${padSide}" y1="${baseline.toFixed(1)}" x2="${W-padSide}" y2="${baseline.toFixed(1)}" stroke="var(--border)" stroke-width="1"/>
+        ${bars}
+      </svg>
+      <div class="chart-legend">
+        <span><span class="legend-dot legend-dot-pos"></span>Plusstunden</span>
+        <span><span class="legend-dot legend-dot-neg"></span>Minusstunden</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderSummaryTable(summary){
   if(summary.length === 0){
     return `<div class="empty">Für ${summaryYear} sind noch keine Arbeitstage erfasst.</div>`;
@@ -1421,7 +1497,7 @@ function renderTabContent(quarters, summary, allTime){
   if(activeTab === 'ueberstunden'){
     return `
       <div class="sub-head">Monate ${summaryYear}</div>
-      ${renderSummaryTable(summary)}
+      ${renderMonthlyBarChart(summary)}
       <div class="sub-head">Gesamt · gesamter Zeitraum</div>
       ${renderAllTimeSummary(allTime)}
     `;
