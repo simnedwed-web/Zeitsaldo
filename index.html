@@ -121,6 +121,14 @@
     color: var(--text);
   }
   .punch-time-empty{ font-size: 13px; color: var(--text-soft); }
+  .punch-timer{
+    margin-top: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .punch-timer.timer-over{ color: var(--green); }
   .punch-btn{ font-size: 15px; padding: 12px 26px; white-space: nowrap; }
 
   /* Stat row */
@@ -743,6 +751,16 @@ function sollMinutes(dateStr){
   if(wd>=0 && wd<=3) return 8*60;      // Mo-Do
   if(wd===4) return 6.5*60;            // Fr
   return 0;                            // Sa/So
+}
+
+function timerDurationMinutes(dateStr){
+  // Anwesenheitszeit inkl. 15 Min Pause: Mo-Do 8:15 Std, Fr 6:45 Std
+  if(holidayName(dateStr)) return null;
+  const d = parseDate(dateStr);
+  const wd = weekdayMon0(d);
+  if(wd>=0 && wd<=3) return 8*60 + 15;
+  if(wd===4) return 6*60 + 45;
+  return null;
 }
 
 function timeToMin(t){
@@ -1571,6 +1589,15 @@ function renderPunchCard(){
   else if(!end) label = 'Gehen';
   else label = 'Gehen aktualisieren';
 
+  let timerHtml = '';
+  if(start && !end){
+    const duration = timerDurationMinutes(todayStr);
+    if(duration !== null){
+      const targetMin = timeToMin(start) + duration;
+      timerHtml = `<div class="punch-timer" id="liveTimer" data-target="${targetMin}"></div>`;
+    }
+  }
+
   return `
     <div class="punch-card">
       <div>
@@ -1579,6 +1606,7 @@ function renderPunchCard(){
           ${start ? `<span class="punch-time">Kommen ${start}</span>` : `<span class="punch-time-empty">Noch nicht gestempelt</span>`}
           ${end ? `<span class="punch-time">Gehen ${end}</span>` : ''}
         </div>
+        ${timerHtml}
       </div>
       <button class="btn btn-primary punch-btn" id="punchBtn">${label}</button>
     </div>
@@ -1771,6 +1799,32 @@ function exportPdf(){
 }
 
 /* ---------- Event handling ---------- */
+
+let timerIntervalId = null;
+
+function updateLiveTimer(){
+  const el = document.getElementById('liveTimer');
+  if(!el){
+    if(timerIntervalId){ clearInterval(timerIntervalId); timerIntervalId = null; }
+    return;
+  }
+  const targetMin = Number(el.dataset.target);
+  const now = new Date();
+  const nowSeconds = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds();
+  const targetSeconds = targetMin*60;
+  const diff = targetSeconds - nowSeconds;
+  const fmtHMS = (secs) => {
+    const h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60), s = secs%60;
+    return `${h}:${pad(m)}:${pad(s)}`;
+  };
+  if(diff > 0){
+    el.textContent = `Noch ${fmtHMS(diff)} bis Feierabend`;
+    el.classList.remove('timer-over');
+  } else {
+    el.textContent = `Feierabend erreicht · +${fmtHMS(-diff)}`;
+    el.classList.add('timer-over');
+  }
+}
 
 function attachHandlers(){
   const settingsToggle = document.getElementById('settingsToggle');
@@ -2024,6 +2078,12 @@ function attachHandlers(){
       await saveState();
     }
   };
+
+  if(timerIntervalId){ clearInterval(timerIntervalId); timerIntervalId = null; }
+  if(document.getElementById('liveTimer')){
+    updateLiveTimer();
+    timerIntervalId = setInterval(updateLiveTimer, 1000);
+  }
 }
 
 /* ---------- Init ---------- */
