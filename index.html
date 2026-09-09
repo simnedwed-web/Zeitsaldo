@@ -129,6 +129,11 @@
     color: var(--accent);
   }
   .punch-timer.timer-over{ color: var(--green); }
+  .punch-done-hint{
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--text-soft);
+  }
   .punch-btn{ font-size: 15px; padding: 12px 26px; white-space: nowrap; }
 
   /* Stat row */
@@ -1584,10 +1589,7 @@ function renderPunchCard(){
 
   const start = entry && entry.start;
   const end = entry && entry.end;
-  let label;
-  if(!start) label = 'Kommen';
-  else if(!end) label = 'Gehen';
-  else label = 'Gehen aktualisieren';
+  const isDone = !!(start && end);
 
   let timerHtml = '';
   if(start && !end){
@@ -1607,8 +1609,9 @@ function renderPunchCard(){
           ${end ? `<span class="punch-time">Gehen ${end}</span>` : ''}
         </div>
         ${timerHtml}
+        ${isDone ? `<div class="punch-done-hint">Für heute erfasst · Zeiten bei Bedarf im Kalender unten anpassen</div>` : ''}
       </div>
-      <button class="btn btn-primary punch-btn" id="punchBtn">${label}</button>
+      ${!isDone ? `<button class="btn btn-primary punch-btn" id="punchBtn">${!start ? 'Kommen' : 'Gehen'}</button>` : ''}
     </div>
   `;
 }
@@ -1845,8 +1848,6 @@ function attachHandlers(){
     if(!entry.start){
       entry.start = timeStr;
     } else if(!entry.end){
-      entry.end = timeStr;
-    } else {
       entry.end = timeStr;
     }
     state.entries[todayStr] = entry;
