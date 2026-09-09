@@ -187,7 +187,7 @@
   }
   .cal-grid{
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
+    grid-template-columns: 34px repeat(7, 1fr);
     gap: 6px;
   }
   .cal-head{
@@ -195,6 +195,14 @@
     color: var(--text-soft);
     text-align: center;
     padding: 4px 0 8px;
+  }
+  .cal-kw{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size: 10px;
+    color: var(--text-soft);
+    white-space: nowrap;
   }
   .cal-cell{
     min-height: 66px;
@@ -645,6 +653,8 @@
   @media (max-width: 480px){
     .stats{ grid-template-columns: 1fr; }
     .cal-cell{ min-height: 52px; font-size: 10.5px; }
+    .cal-grid{ grid-template-columns: 22px repeat(7, 1fr); gap: 4px; }
+    .cal-kw{ font-size: 8.5px; }
     h1{ font-size: 24px; }
     .summary-table{ font-size: 11.5px; }
     .quarter-grid{ grid-template-columns: 1fr 1fr; }
@@ -1215,6 +1225,7 @@ function render(){
         </div>
       </div>
       <div class="cal-grid" id="calGrid">
+        <div class="cal-head cal-kw-head"></div>
         ${DAY_NAMES.map(d=>`<div class="cal-head">${d}</div>`).join('')}
         ${renderCalendarCells()}
       </div>
@@ -1378,58 +1389,75 @@ function renderAllTimeSummary(allTime){
   `;
 }
 
+function isoWeekNumber(d){
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = (date.getUTCDay() + 6) % 7; // Mo=0..So=6
+  date.setUTCDate(date.getUTCDate() - dayNum + 3); // Donnerstag dieser Woche
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+  return 1 + Math.round((date - firstThursday) / (7*24*3600*1000));
+}
+
 function renderCalendarCells(){
   const first = new Date(viewYear, viewMonth, 1);
   const startOffset = weekdayMon0(first); // days before month start to fill
   const gridStart = new Date(viewYear, viewMonth, 1 - startOffset);
 
   let html = '';
-  for(let i=0;i<42;i++){
-    const cellDate = new Date(gridStart);
-    cellDate.setDate(gridStart.getDate()+i);
-    const dateStr = fmtDate(cellDate);
-    const inMonth = cellDate.getMonth() === viewMonth;
-    const wd = weekdayMon0(cellDate);
-    const isWeekend = wd >= 5;
-    const entry = state.entries[dateStr];
-    const holiday = !isWeekend ? holidayName(dateStr) : null;
+  for(let w=0; w<6; w++){
+    const weekStart = new Date(gridStart);
+    weekStart.setDate(gridStart.getDate() + w*7);
+    const kw = isoWeekNumber(weekStart);
+    html += `<div class="cal-kw">KW ${kw}</div>`;
 
-    let classes = 'cal-cell';
-    if(!inMonth) classes += ' other-month';
-    if(isWeekend) classes += ' disabled';
-    if(dateStr === todayStr) classes += ' today';
-    if(dateStr === selectedDate) classes += ' selected';
+    for(let d=0; d<7; d++){
+      const cellDate = new Date(weekStart);
+      cellDate.setDate(weekStart.getDate() + d);
+      const dateStr = fmtDate(cellDate);
+      const inMonth = cellDate.getMonth() === viewMonth;
+      const wd = weekdayMon0(cellDate);
+      const isWeekend = wd >= 5;
+      const entry = state.entries[dateStr];
+      const holiday = !isWeekend ? holidayName(dateStr) : null;
 
-    let inner = `<span class="cal-daynum">${cellDate.getDate()}</span>`;
-    if(holiday){
-      inner += `<span class="cal-tag feiertag" title="${holiday}">${holiday}</span>`;
-    }
-    if(entry){
-      if(entry.type === 'urlaub'){
-        inner += `<span class="cal-tag urlaub">Urlaub</span>`;
-      } else if(entry.type === 'za'){
-        inner += `<span class="cal-tag za">ZA −${fmtDurationPlain(sollMinutes(dateStr))}</span>`;
-      } else if(entry.type === 'krank'){
-        inner += `<span class="cal-tag krank">Krankenstand</span>`;
-      } else if(entry.type === 'work'){
-        const w = workedMinutes(entry);
-        if(w !== null){
-          const delta = w - sollMinutes(dateStr);
-          inner += `<span class="cal-time">${entry.start}–${entry.end}</span>`;
-          inner += `<span class="cal-tag ${delta>=0?'work-pos':'work-neg'}">${fmtDuration(delta)}</span>`;
+      let classes = 'cal-cell';
+      if(!inMonth) classes += ' other-month';
+      if(isWeekend) classes += ' disabled';
+      if(dateStr === todayStr) classes += ' today';
+      if(dateStr === selectedDate) classes += ' selected';
+
+      let inner = `<span class="cal-daynum">${cellDate.getDate()}</span>`;
+      if(holiday){
+        inner += `<span class="cal-tag feiertag" title="${holiday}">${holiday}</span>`;
+      }
+      if(entry){
+        if(entry.type === 'urlaub'){
+          inner += `<span class="cal-tag urlaub">Urlaub</span>`;
+        } else if(entry.type === 'za'){
+          inner += `<span class="cal-tag za">ZA −${fmtDurationPlain(sollMinutes(dateStr))}</span>`;
+        } else if(entry.type === 'krank'){
+          inner += `<span class="cal-tag krank">Krankenstand</span>`;
+        } else if(entry.type === 'work'){
+          const wm = workedMinutes(entry);
+          if(wm !== null){
+            const delta = wm - sollMinutes(dateStr);
+            inner += `<span class="cal-time">${entry.start}–${entry.end}</span>`;
+            inner += `<span class="cal-tag ${delta>=0?'work-pos':'work-neg'}">${fmtDuration(delta)}</span>`;
+          }
+        } else if(entry.type === 'note' && !entry.termin){
+          inner += `<span class="cal-tag note-only" title="${escapeHtml(entry.note||'')}">Notiz</span>`;
         }
-      } else if(entry.type === 'note' && !entry.termin){
-        inner += `<span class="cal-tag note-only" title="${escapeHtml(entry.note||'')}">Notiz</span>`;
+        if(entry.termin){
+          inner += `<span class="cal-appt" title="${escapeHtml(entry.termin)}">${escapeHtml(entry.termin)}</span>`;
+        }
+        if(entry.note && entry.type !== 'note'){
+          inner += `<span class="cal-note-dot" title="${escapeHtml(entry.note)}">📝</span>`;
+        }
       }
-      if(entry.termin){
-        inner += `<span class="cal-appt" title="${escapeHtml(entry.termin)}">${escapeHtml(entry.termin)}</span>`;
-      }
-      if(entry.note && entry.type !== 'note'){
-        inner += `<span class="cal-note-dot" title="${escapeHtml(entry.note)}">📝</span>`;
-      }
-    }
 
-    html += `<div class="${classes}" data-date="${dateStr}" data-clickable="${!isWeekend}">${inner}</div>`;
+      html += `<div class="${classes}" data-date="${dateStr}" data-clickable="${!isWeekend}">${inner}</div>`;
+    }
   }
   return html;
 }
