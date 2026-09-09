@@ -136,6 +136,44 @@
   }
   .punch-btn{ font-size: 15px; padding: 12px 26px; white-space: nowrap; }
 
+  /* Weather card */
+  .weather-card{
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px 18px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow-sm);
+  }
+  .weather-label{ font-size: 11.5px; color: var(--text-soft); margin-bottom: 8px; }
+  .weather-main{ display:flex; align-items:center; gap: 12px; }
+  .weather-temp{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1;
+  }
+  .weather-cond{ font-size: 11px; color: var(--text-soft); margin-top: 3px; }
+  .weather-sub{
+    font-size: 11px;
+    color: var(--text-soft);
+    margin-top: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+  }
+  .weather-precip{ color: var(--vacation); }
+  .weather-loading, .weather-error{
+    font-size: 12px;
+    color: var(--text-soft);
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    margin-bottom: 24px;
+  }
+  .weather-error{ color: var(--red); }
+
   /* Stat row */
   .stats{
     display: grid;
@@ -699,6 +737,9 @@
 <script>
 const STORAGE_KEY = 'zeitkonto_v1';
 const REPORT_NAME = 'Simon Nedwed';
+const WEATHER_LAT = 48.4103;
+const WEATHER_LON = 15.6111;
+const WEATHER_LOCATION_NAME = 'Krems an der Donau';
 const DEFAULT_START = '06:00';
 const DAY_NAMES = ['Mo','Di','Mi','Do','Fr','Sa','So'];
 const MONTH_NAMES = ['Jänner','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
@@ -724,6 +765,8 @@ let pdfExportOpen = false;
 let syncOpen = false;
 let syncStatus = null; // null | 'saving' | 'ok' | 'error'
 let syncMessage = '';
+let weatherData = null;
+let weatherStatus = 'idle'; // idle | loading | ok | error
 let loadError = false;
 
 const todayObj = new Date();
@@ -969,6 +1012,96 @@ function syncBadgeText(){
   return '☁ Sync bereit';
 }
 
+/* ---------- Wetter (Open-Meteo, kein API-Key nötig) ---------- */
+
+async function fetchWeather(){
+  weatherStatus = 'loading';
+  try{
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Europe%2FVienna&forecast_days=1`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error(`Wetter-API Fehler (${res.status})`);
+    const data = await res.json();
+    weatherData = {
+      temp: data.current.temperature_2m,
+      code: data.current.weather_code,
+      high: data.daily.temperature_2m_max[0],
+      low: data.daily.temperature_2m_min[0],
+      precipChance: data.daily.precipitation_probability_max[0]
+    };
+    weatherStatus = 'ok';
+  } catch(err){
+    console.error('Wetter-Fehler:', err);
+    weatherStatus = 'error';
+  }
+  render();
+}
+
+function weatherCategory(code){
+  if(code === 0) return 'clear';
+  if(code === 1 || code === 2) return 'partly';
+  if(code === 3) return 'cloudy';
+  if(code === 45 || code === 48) return 'fog';
+  if([51,53,55,56,57].includes(code)) return 'drizzle';
+  if([61,63,65,66,67,80,81,82].includes(code)) return 'rain';
+  if([71,73,75,77,85,86].includes(code)) return 'snow';
+  if([95,96,99].includes(code)) return 'storm';
+  return 'cloudy';
+}
+
+function weatherLabel(category){
+  const map = {
+    clear: 'Klar', partly: 'Heiter bis wolkig', cloudy: 'Bedeckt', fog: 'Neblig',
+    drizzle: 'Nieselregen', rain: 'Regen', snow: 'Schnee', storm: 'Gewitter'
+  };
+  return map[category] || 'Bewölkt';
+}
+
+function weatherIconSvg(category){
+  const sun = `<circle cx="14" cy="13" r="8" fill="#D9A441"/>`;
+  const cloud = `<path d="M10 22 h16 a6 6 0 0 0 -1.5 -11.8 A8.5 8.5 0 0 0 8 15.5 A6 6 0 0 0 10 22 Z" fill="#4B4760"/>`;
+  const rainDrops = `<line x1="13" y1="25" x2="11" y2="30" stroke="#7CA0D9" stroke-width="2" stroke-linecap="round"/><line x1="19" y1="25" x2="17" y2="30" stroke="#7CA0D9" stroke-width="2" stroke-linecap="round"/><line x1="25" y1="25" x2="23" y2="30" stroke="#7CA0D9" stroke-width="2" stroke-linecap="round"/>`;
+  const snowDots = `<circle cx="13" cy="27" r="1.4" fill="#EDEBF4"/><circle cx="19" cy="29" r="1.4" fill="#EDEBF4"/><circle cx="25" cy="27" r="1.4" fill="#EDEBF4"/>`;
+  const bolt = `<path d="M18 22 l-4 7 h4 l-2 5 6 -8 h-4 z" fill="#D9A441"/>`;
+
+  let inner;
+  switch(category){
+    case 'clear': inner = sun; break;
+    case 'partly': inner = sun + cloud; break;
+    case 'fog':
+    case 'cloudy': inner = cloud; break;
+    case 'drizzle':
+    case 'rain': inner = cloud + rainDrops; break;
+    case 'snow': inner = cloud + snowDots; break;
+    case 'storm': inner = cloud + bolt; break;
+    default: inner = cloud;
+  }
+  return `<svg width="34" height="34" viewBox="0 0 34 34" style="flex-shrink:0;">${inner}</svg>`;
+}
+
+function renderWeatherCard(){
+  if(weatherStatus === 'error'){
+    return `<div class="weather-card weather-error">Wetter für ${escapeHtml(WEATHER_LOCATION_NAME)} konnte nicht geladen werden.</div>`;
+  }
+  if(weatherStatus !== 'ok' || !weatherData){
+    return `<div class="weather-card weather-loading">Lade Wetter für ${escapeHtml(WEATHER_LOCATION_NAME)} …</div>`;
+  }
+  const { temp, code, high, low, precipChance } = weatherData;
+  const category = weatherCategory(code);
+  return `
+    <div class="weather-card">
+      <div class="weather-label">${escapeHtml(WEATHER_LOCATION_NAME)}</div>
+      <div class="weather-main">
+        ${weatherIconSvg(category)}
+        <div>
+          <div class="weather-temp">${Math.round(temp)}°C</div>
+          <div class="weather-cond">${weatherLabel(category)}</div>
+        </div>
+      </div>
+      <div class="weather-sub">Heute ${Math.round(low)}° / ${Math.round(high)}° · <span class="weather-precip">${Math.round(precipChance)}% Regenwahrscheinlichkeit</span></div>
+    </div>
+  `;
+}
+
 /* ---------- Calculations ---------- */
 
 function overallBalanceMinutes(){
@@ -1177,6 +1310,7 @@ function render(){
     ${syncOpen ? renderSyncPanel() : ''}
 
     ${renderPunchCard()}
+    ${renderWeatherCard()}
 
     <div class="stats">
       <div class="stat">
@@ -2222,6 +2356,7 @@ function attachHandlers(){
     await pullFromGist();
   }
   if(migrated){ await saveState(); } else { render(); }
+  fetchWeather();
 })();
 </script>
 </body>
