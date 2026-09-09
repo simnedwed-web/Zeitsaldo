@@ -204,6 +204,47 @@
   .holiday-date{ font-family: 'IBM Plex Mono', monospace; color: var(--text-soft); flex-shrink:0; }
   .holiday-name{ color: var(--text); flex:1; }
   .holiday-days{ color: var(--accent); font-size: 10.5px; flex-shrink:0; white-space: nowrap; }
+  .weather-forecast{
+    padding: 14px 18px;
+    border-top: 1px solid var(--border);
+  }
+  .weather-hourly, .weather-daily{
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .wx-hour, .wx-day{
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: center;
+  }
+  .wx-hour-time, .wx-day-label{
+    font-size: 9px;
+    color: var(--text-soft);
+    margin-bottom: 4px;
+    white-space: nowrap;
+  }
+  .wx-mini svg{
+    width: 18px;
+    height: 18px;
+    display: block;
+    margin: 0 auto;
+  }
+  .wx-hour-temp{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    margin-top: 4px;
+    white-space: nowrap;
+  }
+  .wx-day-temp{
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .wx-day-high{ display:block; color: var(--text); font-weight: 600; }
+  .wx-day-low{ display:block; color: var(--text-soft); }
   .weather-loading, .weather-error{
     font-size: 12px;
     color: var(--text-soft);
@@ -1117,10 +1158,29 @@ function syncBadgeText(){
 async function fetchWeather(){
   weatherStatus = 'loading';
   try{
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max&timezone=Europe%2FVienna&forecast_days=1`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=temperature_2m,weather_code&hourly=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max,weather_code&timezone=Europe%2FVienna&forecast_days=7`;
     const res = await fetch(url);
     if(!res.ok) throw new Error(`Wetter-API Fehler (${res.status})`);
     const data = await res.json();
+
+    let startIdx = data.hourly.time.indexOf(data.current.time);
+    if(startIdx === -1) startIdx = 0;
+    const hourly = [];
+    for(let i = startIdx+1; i <= startIdx+6 && i < data.hourly.time.length; i++){
+      hourly.push({ time: data.hourly.time[i], temp: data.hourly.temperature_2m[i], code: data.hourly.weather_code[i] });
+    }
+
+    const daily = [];
+    for(let i = 0; i < data.daily.time.length; i++){
+      daily.push({
+        date: data.daily.time[i],
+        high: data.daily.temperature_2m_max[i],
+        low: data.daily.temperature_2m_min[i],
+        code: data.daily.weather_code[i],
+        precipChance: data.daily.precipitation_probability_max[i]
+      });
+    }
+
     weatherData = {
       temp: data.current.temperature_2m,
       code: data.current.weather_code,
@@ -1130,7 +1190,9 @@ async function fetchWeather(){
       sunrise: data.daily.sunrise[0],
       sunset: data.daily.sunset[0],
       uvIndex: data.daily.uv_index_max[0],
-      aqi: null
+      aqi: null,
+      hourly,
+      daily
     };
     weatherStatus = 'ok';
   } catch(err){
@@ -1168,6 +1230,41 @@ function fmtIsoTime(iso){
   if(!iso) return '–';
   const parts = iso.split('T');
   return parts.length > 1 ? parts[1] : iso;
+}
+
+function renderHourlyStrip(hourlyArr){
+  if(!hourlyArr || hourlyArr.length === 0) return '';
+  return `
+    <div class="weather-hourly">
+      ${hourlyArr.map(h => {
+        const hourLabel = fmtIsoTime(h.time).slice(0,5);
+        const cat = weatherCategory(h.code);
+        return `<div class="wx-hour">
+          <div class="wx-hour-time">${hourLabel}</div>
+          <div class="wx-mini">${weatherIconSvg(cat)}</div>
+          <div class="wx-hour-temp">${Math.round(h.temp)}°</div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function renderDailyStrip(dailyArr){
+  if(!dailyArr || dailyArr.length === 0) return '';
+  return `
+    <div class="weather-daily">
+      ${dailyArr.map((d, i) => {
+        const dateObj = parseDate(d.date);
+        const label = i === 0 ? 'Heute' : DAY_NAMES[weekdayMon0(dateObj)];
+        const cat = weatherCategory(d.code);
+        return `<div class="wx-day">
+          <div class="wx-day-label">${label}</div>
+          <div class="wx-mini">${weatherIconSvg(cat)}</div>
+          <div class="wx-day-temp"><span class="wx-day-high">${Math.round(d.high)}°</span><span class="wx-day-low">${Math.round(d.low)}°</span></div>
+        </div>`;
+      }).join('')}
+    </div>
+  `;
 }
 
 function weatherCategory(code){
@@ -1277,6 +1374,10 @@ function renderWeatherCard(){
           <span>UV ${uvIndex !== undefined && uvIndex !== null ? Math.round(uvIndex) : '–'}</span>
           ${aqiData ? `<span style="color:${aqiData.color}">Luft: ${Math.round(aqi)} · ${aqiData.text}</span>` : ''}
         </div>
+        <div class="weather-label" style="margin-top:12px;">Nächste Stunden</div>
+        ${renderHourlyStrip(weatherData.hourly)}
+        <div class="weather-label" style="margin-top:12px;">Nächste Tage</div>
+        ${renderDailyStrip(weatherData.daily)}
       </div>
       <div class="weather-divider"></div>
       <div class="weather-col">
@@ -1539,6 +1640,23 @@ function render(){
     ${renderPunchCard()}
     ${renderWeatherCard()}
 
+    <section>
+      <div class="cal-nav">
+        <button class="icon-btn" id="prevMonth" aria-label="Vorheriger Monat">‹</button>
+        <div class="cal-month">${MONTH_NAMES[viewMonth]} ${viewYear}</div>
+        <div class="cal-nav-right">
+          <button class="btn btn-ghost btn-sm" id="jumpToday">Heute</button>
+          <button class="icon-btn" id="nextMonth" aria-label="Nächster Monat">›</button>
+        </div>
+      </div>
+      <div class="cal-grid" id="calGrid">
+        <div class="cal-head cal-kw-head"></div>
+        ${DAY_NAMES.map(d=>`<div class="cal-head">${d}</div>`).join('')}
+        ${renderCalendarCells()}
+      </div>
+      ${selectedDate ? renderEditor() : ''}
+    </section>
+
     <div class="stats">
       <div class="stat">
         <div class="stat-label">Überstunden-Saldo</div>
@@ -1562,23 +1680,6 @@ function render(){
         <div class="stat-sub">aus dem Kalender erfasst</div>
       </div>
     </div>
-
-    <section>
-      <div class="cal-nav">
-        <button class="icon-btn" id="prevMonth" aria-label="Vorheriger Monat">‹</button>
-        <div class="cal-month">${MONTH_NAMES[viewMonth]} ${viewYear}</div>
-        <div class="cal-nav-right">
-          <button class="btn btn-ghost btn-sm" id="jumpToday">Heute</button>
-          <button class="icon-btn" id="nextMonth" aria-label="Nächster Monat">›</button>
-        </div>
-      </div>
-      <div class="cal-grid" id="calGrid">
-        <div class="cal-head cal-kw-head"></div>
-        ${DAY_NAMES.map(d=>`<div class="cal-head">${d}</div>`).join('')}
-        ${renderCalendarCells()}
-      </div>
-      ${selectedDate ? renderEditor() : ''}
-    </section>
 
     <section class="tabs-section">
       <div class="tabs-head">
