@@ -249,6 +249,8 @@
     color: var(--text-soft);
     margin-top: 5px;
   }
+  .stat-sparkline-wrap{ margin-top: 6px; line-height: 0; }
+  .stat-sparkline{ display: block; }
 
   /* Calendar */
   .cal-nav{
@@ -306,6 +308,10 @@
   .cal-cell.other-month{ opacity: 0.3; }
   .cal-cell.today{ border-color: var(--accent); }
   .cal-cell.selected{ outline: 2px solid var(--accent); outline-offset: 1px; }
+  .cal-cell.heat-pos{ background: rgba(76,175,109,0.12); }
+  .cal-cell.heat-neg{ background: rgba(224,96,90,0.12); }
+  .cal-cell.heat-pos:hover{ background: rgba(76,175,109,0.18); }
+  .cal-cell.heat-neg:hover{ background: rgba(224,96,90,0.18); }
   .cal-daynum{
     font-family: 'IBM Plex Mono', monospace;
     font-weight: 500;
@@ -1420,6 +1426,39 @@ function monthlySummary(year){
   }));
 }
 
+function lastNMonthsDiffs(n){
+  const cache = {};
+  const result = [];
+  for(let i = n-1; i >= 0; i--){
+    let m = todayObj.getMonth() - i;
+    let y = todayObj.getFullYear();
+    while(m < 0){ m += 12; y -= 1; }
+    if(!cache[y]) cache[y] = monthlySummary(y);
+    result.push(cache[y][m].diff);
+  }
+  return result;
+}
+
+function renderSparkline(values){
+  const w = 90, h = 32;
+  const n = values.length;
+  if(n < 2) return '';
+  const maxAbs = Math.max(1, ...values.map(v => Math.abs(v)));
+  const stepX = w / (n-1);
+  const toY = (v) => h/2 - (v/maxAbs) * (h/2 - 5);
+  const points = values.map((v,i) => `${(i*stepX).toFixed(1)},${toY(v).toFixed(1)}`).join(' ');
+  const lastVal = values[n-1];
+  const color = lastVal >= 0 ? 'var(--green)' : 'var(--red)';
+  const lastX = ((n-1)*stepX).toFixed(1);
+  const lastY = toY(lastVal).toFixed(1);
+  return `
+    <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="stat-sparkline">
+      <polyline points="${points}" fill="none" style="stroke:${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${lastX}" cy="${lastY}" r="2.5" style="fill:${color}"/>
+    </svg>
+  `;
+}
+
 const QUARTER_LABELS = ['Jän–Mär','Apr–Jun','Jul–Sep','Okt–Dez'];
 
 function quarterlySummary(year){
@@ -1492,6 +1531,7 @@ function render(){
       <div class="stat">
         <div class="stat-label">Überstunden-Saldo</div>
         <div class="stat-value ${balance>=0?'pos':'neg'}">${fmtDuration(balance)} Std</div>
+        <div class="stat-sparkline-wrap">${renderSparkline(lastNMonthsDiffs(6))}</div>
         <div class="stat-sub">seit Start${state.settings.startBalanceMinutes ? ' · inkl. Anfangssaldo' : ''}</div>
       </div>
       <div class="stat">
@@ -1736,6 +1776,14 @@ function renderCalendarCells(){
       if(isWeekend) classes += ' disabled';
       if(dateStr === todayStr) classes += ' today';
       if(dateStr === selectedDate) classes += ' selected';
+      if(entry && entry.type === 'work'){
+        const wmHeat = workedMinutes(entry);
+        if(wmHeat !== null){
+          classes += (wmHeat - sollMinutes(dateStr)) >= 0 ? ' heat-pos' : ' heat-neg';
+        }
+      } else if(entry && entry.type === 'za'){
+        classes += ' heat-neg';
+      }
 
       let inner = `<span class="cal-daynum">${cellDate.getDate()}</span>`;
       if(holiday){
