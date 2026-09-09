@@ -164,6 +164,17 @@
     background: var(--border);
     flex-shrink: 0;
   }
+  .weather-col-split{
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+  }
+  .weather-col-half{ padding: 14px 18px; }
+  .weather-divider-h{
+    height: 1px;
+    background: var(--border);
+    margin: 0 18px;
+  }
   .weather-label{ font-size: 11.5px; color: var(--text-soft); margin-bottom: 8px; }
   .weather-main{ display:flex; align-items:center; gap: 12px; }
   .weather-temp{
@@ -1351,6 +1362,35 @@ function renderUpcomingHolidaysContent(){
   `;
 }
 
+function upcomingAppointmentsList(count){
+  const results = [];
+  for(const [date, entry] of Object.entries(state.entries)){
+    if(entry.termin && date >= todayStr){
+      results.push({ date, termin: entry.termin });
+    }
+  }
+  results.sort((a,b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+  return results.slice(0, count);
+}
+
+function renderUpcomingAppointmentsContent(){
+  const list = upcomingAppointmentsList(4);
+  if(list.length === 0){
+    return `<div class="fuel-empty">Keine bevorstehenden Termine eingetragen.</div>`;
+  }
+  return `
+    <ul class="holiday-list">
+      ${list.map(a => {
+        const d = parseDate(a.date);
+        const label = d.toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit' });
+        const days = daysUntil(a.date);
+        const daysText = days === 0 ? 'heute' : days === 1 ? 'morgen' : `in ${days} Tagen`;
+        return `<li><span class="holiday-date">${label}</span><span class="holiday-name">${escapeHtml(a.termin)}</span><span class="holiday-days">${daysText}</span></li>`;
+      }).join('')}
+    </ul>
+  `;
+}
+
 function renderWeatherCard(){
   if(weatherStatus === 'error'){
     return `<div class="weather-card weather-error">Wetter für ${escapeHtml(WEATHER_LOCATION_NAME)} konnte nicht geladen werden.</div>`;
@@ -1385,9 +1425,16 @@ function renderWeatherCard(){
         ${renderDailyStrip(weatherData.daily)}
       </div>
       <div class="weather-divider"></div>
-      <div class="weather-col">
-        <div class="weather-label">Nächste Feiertage</div>
-        ${renderUpcomingHolidaysContent()}
+      <div class="weather-col weather-col-split">
+        <div class="weather-col-half">
+          <div class="weather-label">Nächste Feiertage</div>
+          ${renderUpcomingHolidaysContent()}
+        </div>
+        <div class="weather-divider-h"></div>
+        <div class="weather-col-half">
+          <div class="weather-label">Nächste Termine</div>
+          ${renderUpcomingAppointmentsContent()}
+        </div>
       </div>
     </div>
   `;
