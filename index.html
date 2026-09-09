@@ -71,6 +71,12 @@
     white-space: nowrap;
   }
   .sync-status.sync-status-error{ color: var(--red); }
+  .greeting{
+    font-size: 13px;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
   h1{
     font-family: 'Manrope', sans-serif;
     font-weight: 800;
@@ -723,6 +729,30 @@
   footer.reset-row button:hover{ color: var(--accent); }
   footer.reset-row button#resetAll:hover{ color: var(--red); }
 
+  .toast{
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-family: 'IBM Plex Sans', sans-serif;
+    box-shadow: var(--shadow);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 1000;
+    white-space: nowrap;
+  }
+  .toast.show{
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
   @media (max-width: 480px){
     .stats{ grid-template-columns: 1fr; }
     .cal-cell{ min-height: 52px; font-size: 10.5px; }
@@ -952,6 +982,29 @@ async function loadState(){
     loadError = true;
   }
   return migrated;
+}
+
+/* ---------- Kurzes Feedback (Toast) ---------- */
+
+let toastTimeoutId = null;
+function ensureToastEl(){
+  let el = document.getElementById('toastMsg');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'toastMsg';
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+function showToast(message){
+  const el = ensureToastEl();
+  el.textContent = message;
+  el.classList.add('show');
+  if(toastTimeoutId) clearTimeout(toastTimeoutId);
+  toastTimeoutId = setTimeout(() => {
+    el.classList.remove('show');
+  }, 2200);
 }
 
 async function saveState(){
@@ -1412,6 +1465,7 @@ function render(){
   app.innerHTML = `
     <header class="top">
       <div>
+        <div class="greeting">Servus, Simon</div>
         <h1>Zeitsaldo</h1>
         <div class="subtitle">38,5 Std/Woche · Mo–Do 8:00 Std · Fr 6:30 Std · je 15 Min Pause</div>
       </div>
@@ -2225,6 +2279,7 @@ function attachHandlers(){
     const timeStr = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
     const existing = state.entries[todayStr];
     const entry = (existing && existing.type === 'work') ? { ...existing } : { type: 'work', breakMin: 15 };
+    const isComing = !entry.start;
     if(!entry.start){
       entry.start = timeStr;
     } else if(!entry.end){
@@ -2232,6 +2287,7 @@ function attachHandlers(){
     }
     state.entries[todayStr] = entry;
     await saveState();
+    showToast(isComing ? '✓ Kommen erfasst' : '✓ Gehen erfasst');
   };
 
   const punchEditBtn = document.getElementById('punchEditToday');
@@ -2257,6 +2313,7 @@ function attachHandlers(){
     state.settings.syncToken = token || undefined;
     state.settings.syncGistId = gistId || undefined;
     await saveState();
+    showToast('✓ Sync-Einstellungen gespeichert');
   };
 
   const pullSyncBtn = document.getElementById('pullSyncBtn');
@@ -2264,6 +2321,7 @@ function attachHandlers(){
     if(confirm('Lokale Daten mit dem Stand aus der Cloud überschreiben?')){
       const ok = await pullFromGist();
       render();
+      showToast(ok ? '☁ Von Cloud geladen' : '✕ Laden fehlgeschlagen');
     }
   };
 
@@ -2373,6 +2431,7 @@ function attachHandlers(){
     editorTerminDraft = null;
     selectedDate = null;
     await saveState();
+    showToast('✓ Gespeichert');
   };
 
   const delBtn = document.getElementById('deleteEntry');
@@ -2383,6 +2442,7 @@ function attachHandlers(){
     editorTerminDraft = null;
     selectedDate = null;
     await saveState();
+    showToast('🗑 Eintrag gelöscht');
   };
 
   const cancelBtn = document.getElementById('cancelEntry');
@@ -2392,6 +2452,7 @@ function attachHandlers(){
     btn.onclick = async () => {
       delete state.entries[btn.dataset.date];
       await saveState();
+      showToast('🗑 Entfernt');
     };
   });
 
@@ -2403,6 +2464,7 @@ function attachHandlers(){
     state.settings.startBalanceMinutes = Math.round(startBalHours*60);
     settingsOpen = false;
     await saveState();
+    showToast('✓ Einstellungen gespeichert');
   };
 
   const saveManualUsedBtn = document.getElementById('saveManualUsed');
@@ -2411,6 +2473,7 @@ function attachHandlers(){
     if(!state.settings.vacationManualUsed) state.settings.vacationManualUsed = {};
     state.settings.vacationManualUsed[summaryYear] = val;
     await saveState();
+    showToast('✓ Übernommen');
   };
 
   const exportBtn = document.getElementById('exportData');
@@ -2426,6 +2489,7 @@ function attachHandlers(){
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
+    showToast('✓ Exportiert');
   };
 
   const importBtn = document.getElementById('importDataBtn');
@@ -2445,6 +2509,7 @@ function attachHandlers(){
       if(keepToken) state.settings.syncToken = keepToken;
       if(keepGistId) state.settings.syncGistId = keepGistId;
       await saveState();
+      showToast('✓ Importiert');
     } catch(err){
       console.error('Fehler beim Importieren:', err);
       alert('Die Datei konnte nicht gelesen werden. Bitte eine gültige Export-Datei auswählen.');
@@ -2457,6 +2522,7 @@ function attachHandlers(){
     if(confirm('Wirklich alle Einträge und Einstellungen löschen? Das kann nicht rückgängig gemacht werden.')){
       state = defaultState();
       await saveState();
+      showToast('🗑 Alle Daten gelöscht');
     }
   };
 
