@@ -141,9 +141,22 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 16px;
-    padding: 14px 18px;
     margin-bottom: 24px;
     box-shadow: var(--shadow-sm);
+  }
+  .weather-card.weather-split{
+    display: flex;
+    align-items: stretch;
+  }
+  .weather-col{
+    flex: 1;
+    min-width: 0;
+    padding: 14px 18px;
+  }
+  .weather-divider{
+    width: 1px;
+    background: var(--border);
+    flex-shrink: 0;
   }
   .weather-label{ font-size: 11.5px; color: var(--text-soft); margin-bottom: 8px; }
   .weather-main{ display:flex; align-items:center; gap: 12px; }
@@ -171,6 +184,20 @@
     color: var(--text-soft);
     flex-wrap: wrap;
   }
+  .fuel-empty{ font-size: 11px; color: var(--text-soft); }
+  .holiday-list{ list-style:none; padding:0; margin:0; }
+  .holiday-list li{
+    display:flex;
+    align-items:baseline;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 11.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .holiday-list li:last-child{ border-bottom:none; }
+  .holiday-date{ font-family: 'IBM Plex Mono', monospace; color: var(--text-soft); flex-shrink:0; }
+  .holiday-name{ color: var(--text); flex:1; }
+  .holiday-days{ color: var(--accent); font-size: 10.5px; flex-shrink:0; white-space: nowrap; }
   .weather-loading, .weather-error{
     font-size: 12px;
     color: var(--text-soft);
@@ -706,6 +733,8 @@
     .quarter-grid{ grid-template-columns: 1fr 1fr; }
     .mini-stats{ grid-template-columns: 1fr 1fr; }
     .tabs-bar{ flex-wrap: wrap; }
+    .weather-card.weather-split{ flex-direction: column; }
+    .weather-divider{ width: 100%; height: 1px; }
   }
 
   .pdf-hint{
@@ -1037,14 +1066,39 @@ async function fetchWeather(){
       precipChance: data.daily.precipitation_probability_max[0],
       sunrise: data.daily.sunrise[0],
       sunset: data.daily.sunset[0],
-      uvIndex: data.daily.uv_index_max[0]
+      uvIndex: data.daily.uv_index_max[0],
+      aqi: null
     };
     weatherStatus = 'ok';
   } catch(err){
     console.error('Wetter-Fehler:', err);
     weatherStatus = 'error';
+    render();
+    return;
+  }
+
+  // Luftqualität separat abrufen (best effort – Wetter bleibt auch bei Fehler sichtbar)
+  try{
+    const airUrl = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${WEATHER_LAT}&longitude=${WEATHER_LON}&current=european_aqi&timezone=Europe%2FVienna`;
+    const airRes = await fetch(airUrl);
+    if(airRes.ok){
+      const airData = await airRes.json();
+      weatherData.aqi = airData.current ? airData.current.european_aqi : null;
+    }
+  } catch(err){
+    console.error('Luftqualität-Fehler:', err);
   }
   render();
+}
+
+function aqiInfo(aqi){
+  if(aqi === null || aqi === undefined) return null;
+  const v = Math.round(aqi);
+  if(v <= 20) return { text: 'Gut', color: 'var(--green)' };
+  if(v <= 40) return { text: 'Mäßig', color: 'var(--accent)' };
+  if(v <= 60) return { text: 'Erhöht', color: '#EF9F27' };
+  if(v <= 80) return { text: 'Schlecht', color: 'var(--red)' };
+  return { text: 'Sehr schlecht', color: 'var(--red)' };
 }
 
 function fmtIsoTime(iso){
@@ -1095,6 +1149,43 @@ function weatherIconSvg(category){
   return `<svg width="34" height="34" viewBox="0 0 34 34" style="flex-shrink:0;">${inner}</svg>`;
 }
 
+function upcomingHolidaysList(count){
+  const results = [];
+  const startYear = todayObj.getFullYear();
+  for(let y = startYear; y <= startYear + 2; y++){
+    const map = getHolidaysForYear(y);
+    for(const [date, name] of Object.entries(map)){
+      if(date >= todayStr) results.push({ date, name });
+    }
+  }
+  results.sort((a,b) => a.date < b.date ? -1 : (a.date > b.date ? 1 : 0));
+  return results.slice(0, count);
+}
+
+function daysUntil(dateStr){
+  const target = parseDate(dateStr);
+  const today0 = new Date(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate());
+  return Math.round((target - today0) / (24*3600*1000));
+}
+
+function renderUpcomingHolidaysContent(){
+  const list = upcomingHolidaysList(4);
+  if(list.length === 0){
+    return `<div class="fuel-empty">Keine bevorstehenden Feiertage gefunden.</div>`;
+  }
+  return `
+    <ul class="holiday-list">
+      ${list.map(h => {
+        const d = parseDate(h.date);
+        const label = d.toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit' });
+        const days = daysUntil(h.date);
+        const daysText = days === 0 ? 'heute' : days === 1 ? 'morgen' : `in ${days} Tagen`;
+        return `<li><span class="holiday-date">${label}</span><span class="holiday-name">${escapeHtml(h.name)}</span><span class="holiday-days">${daysText}</span></li>`;
+      }).join('')}
+    </ul>
+  `;
+}
+
 function renderWeatherCard(){
   if(weatherStatus === 'error'){
     return `<div class="weather-card weather-error">Wetter für ${escapeHtml(WEATHER_LOCATION_NAME)} konnte nicht geladen werden.</div>`;
@@ -1102,23 +1193,32 @@ function renderWeatherCard(){
   if(weatherStatus !== 'ok' || !weatherData){
     return `<div class="weather-card weather-loading">Lade Wetter für ${escapeHtml(WEATHER_LOCATION_NAME)} …</div>`;
   }
-  const { temp, code, high, low, precipChance, sunrise, sunset, uvIndex } = weatherData;
+  const { temp, code, high, low, precipChance, sunrise, sunset, uvIndex, aqi } = weatherData;
   const category = weatherCategory(code);
+  const aqiData = aqiInfo(aqi);
   return `
-    <div class="weather-card">
-      <div class="weather-label">${escapeHtml(WEATHER_LOCATION_NAME)}</div>
-      <div class="weather-main">
-        ${weatherIconSvg(category)}
-        <div>
-          <div class="weather-temp">${Math.round(temp)}°C</div>
-          <div class="weather-cond">${weatherLabel(category)}</div>
+    <div class="weather-card weather-split">
+      <div class="weather-col">
+        <div class="weather-label">${escapeHtml(WEATHER_LOCATION_NAME)}</div>
+        <div class="weather-main">
+          ${weatherIconSvg(category)}
+          <div>
+            <div class="weather-temp">${Math.round(temp)}°C</div>
+            <div class="weather-cond">${weatherLabel(category)}</div>
+          </div>
+        </div>
+        <div class="weather-sub">Heute ${Math.round(low)}° / ${Math.round(high)}° · <span class="weather-precip">${Math.round(precipChance)}% Regen</span></div>
+        <div class="weather-extra">
+          <span>☀ ${fmtIsoTime(sunrise)}</span>
+          <span>🌙 ${fmtIsoTime(sunset)}</span>
+          <span>UV ${uvIndex !== undefined && uvIndex !== null ? Math.round(uvIndex) : '–'}</span>
+          ${aqiData ? `<span style="color:${aqiData.color}">Luft: ${Math.round(aqi)} · ${aqiData.text}</span>` : ''}
         </div>
       </div>
-      <div class="weather-sub">Heute ${Math.round(low)}° / ${Math.round(high)}° · <span class="weather-precip">${Math.round(precipChance)}% Regenwahrscheinlichkeit</span></div>
-      <div class="weather-extra">
-        <span>☀ ${fmtIsoTime(sunrise)}</span>
-        <span>🌙 ${fmtIsoTime(sunset)}</span>
-        <span>UV ${uvIndex !== undefined && uvIndex !== null ? Math.round(uvIndex) : '–'}</span>
+      <div class="weather-divider"></div>
+      <div class="weather-col">
+        <div class="weather-label">Nächste Feiertage</div>
+        ${renderUpcomingHolidaysContent()}
       </div>
     </div>
   `;
