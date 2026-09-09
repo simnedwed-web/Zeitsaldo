@@ -1452,6 +1452,23 @@ function render(){
       </div>
     </div>
 
+    <section>
+      <div class="cal-nav">
+        <button class="icon-btn" id="prevMonth" aria-label="Vorheriger Monat">‹</button>
+        <div class="cal-month">${MONTH_NAMES[viewMonth]} ${viewYear}</div>
+        <div class="cal-nav-right">
+          <button class="btn btn-ghost btn-sm" id="jumpToday">Heute</button>
+          <button class="icon-btn" id="nextMonth" aria-label="Nächster Monat">›</button>
+        </div>
+      </div>
+      <div class="cal-grid" id="calGrid">
+        <div class="cal-head cal-kw-head"></div>
+        ${DAY_NAMES.map(d=>`<div class="cal-head">${d}</div>`).join('')}
+        ${renderCalendarCells()}
+      </div>
+      ${selectedDate ? renderEditor() : ''}
+    </section>
+
     <section class="tabs-section">
       <div class="tabs-head">
         <div class="tabs-bar" role="tablist" id="tabsBar" aria-label="Übersicht wählen">
@@ -1469,23 +1486,6 @@ function render(){
       <div class="tab-content">
         ${renderTabContent(quarters, summary, allTime)}
       </div>
-    </section>
-
-    <section>
-      <div class="cal-nav">
-        <button class="icon-btn" id="prevMonth" aria-label="Vorheriger Monat">‹</button>
-        <div class="cal-month">${MONTH_NAMES[viewMonth]} ${viewYear}</div>
-        <div class="cal-nav-right">
-          <button class="btn btn-ghost btn-sm" id="jumpToday">Heute</button>
-          <button class="icon-btn" id="nextMonth" aria-label="Nächster Monat">›</button>
-        </div>
-      </div>
-      <div class="cal-grid" id="calGrid">
-        <div class="cal-head cal-kw-head"></div>
-        ${DAY_NAMES.map(d=>`<div class="cal-head">${d}</div>`).join('')}
-        ${renderCalendarCells()}
-      </div>
-      ${selectedDate ? renderEditor() : ''}
     </section>
 
     <footer class="reset-row">
