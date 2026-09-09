@@ -218,7 +218,7 @@
   /* Stat row */
   .stats{
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(4, 1fr);
     gap: 12px;
     margin-bottom: 32px;
   }
@@ -757,6 +757,10 @@
   .toast.show{
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+  }
+
+  @media (max-width: 640px) and (min-width: 481px){
+    .stats{ grid-template-columns: 1fr 1fr; }
   }
 
   @media (max-width: 480px){
@@ -1354,6 +1358,14 @@ function vacationStats(year){
   return { used: row.used, planned: row.planned, remaining: row.remaining, allowance: row.allowance, carryIn: row.carryIn, manual };
 }
 
+function krankDaysCount(year){
+  let count = 0;
+  for(const [date, entry] of Object.entries(state.entries)){
+    if(entry.type === 'krank' && date.startsWith(String(year))) count++;
+  }
+  return count;
+}
+
 function weekRangeContaining(date){
   const wd = weekdayMon0(date);
   const start = new Date(date);
@@ -1543,6 +1555,11 @@ function render(){
         <div class="stat-label">Urlaub verplant</div>
         <div class="stat-value">${vac.planned} Tage</div>
         <div class="stat-sub">${vac.used} bereits genommen</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">Krankenstandstage ${todayObj.getFullYear()}</div>
+        <div class="stat-value">${krankDaysCount(todayObj.getFullYear())} Tage</div>
+        <div class="stat-sub">aus dem Kalender erfasst</div>
       </div>
     </div>
 
