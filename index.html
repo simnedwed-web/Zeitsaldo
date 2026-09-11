@@ -1159,7 +1159,10 @@ async function pushToGist(){
         if(file){
           const cloudParsed = JSON.parse(file.content);
           const cloudCount = Object.keys(cloudParsed.entries || {}).length;
-          if(cloudCount > 0 && localCount < cloudCount){
+          // Nur bei drastischem Verlust blockieren (z. B. leerer/veralteter lokaler Speicher) –
+          // eine einzelne gewollte Löschung soll weiterhin normal hochgeladen werden können.
+          const droppedDrastically = cloudCount > 0 && (localCount === 0 || localCount < cloudCount * 0.5);
+          if(droppedDrastically){
             syncStatus = 'error';
             syncMessage = `Hochladen gestoppt: lokal nur ${localCount}, Cloud hat ${cloudCount} Einträge. Zuerst „Von Cloud laden" verwenden.`;
             render();
