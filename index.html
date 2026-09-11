@@ -1147,16 +1147,41 @@ async function pushToGist(){
   if(!state.settings.syncToken) return;
   syncStatus = 'saving';
   try{
-    const payload = JSON.stringify(buildSyncPayload(), null, 2);
+    const payload = buildSyncPayload();
+    const localCount = Object.keys(payload.entries || {}).length;
+
     if(state.settings.syncGistId){
+      // Sicherheitscheck: nicht versehentlich über deutlich mehr Cloud-Daten drüberschreiben
+      // (z. B. wenn der lokale Speicher dieses Geräts leer/veraltet ist).
+      try{
+        const current = await githubFetch(`https://api.github.com/gists/${state.settings.syncGistId}`, 'GET');
+        const file = current.files && current.files[SYNC_FILENAME];
+        if(file){
+          const cloudParsed = JSON.parse(file.content);
+          const cloudCount = Object.keys(cloudParsed.entries || {}).length;
+          if(cloudCount > 0 && localCount < cloudCount){
+            syncStatus = 'error';
+            syncMessage = `Hochladen gestoppt: lokal nur ${localCount}, Cloud hat ${cloudCount} Einträge. Zuerst „Von Cloud laden" verwenden.`;
+            render();
+            return;
+          }
+        }
+      } catch(checkErr){
+        console.error('Sync-Sicherheitscheck fehlgeschlagen:', checkErr);
+        syncStatus = 'error';
+        syncMessage = 'Sicherheitscheck fehlgeschlagen – Hochladen sicherheitshalber abgebrochen.';
+        render();
+        return;
+      }
+
       await githubFetch(`https://api.github.com/gists/${state.settings.syncGistId}`, 'PATCH', {
-        files: { [SYNC_FILENAME]: { content: payload } }
+        files: { [SYNC_FILENAME]: { content: JSON.stringify(payload, null, 2) } }
       });
     } else {
       const result = await githubFetch('https://api.github.com/gists', 'POST', {
         description: 'Zeitsaldo Sync – bitte nicht löschen',
         public: false,
-        files: { [SYNC_FILENAME]: { content: payload } }
+        files: { [SYNC_FILENAME]: { content: JSON.stringify(payload, null, 2) } }
       });
       state.settings.syncGistId = result.id;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -2349,7 +2374,7 @@ function renderPunchCard(){
     const duration = timerDurationMinutes(todayStr);
     if(duration !== null){
       const targetMin = timeToMin(start) + duration;
-      timerHtml = `<div class="punch-timer" id="liveTimer" data-target="${targetMin}"></div>`;
+      timerHtml = `<div class="punch-timer" id="liveTimer" data-mode="countdown" data-target="${targetMin}"></div>`;
     }
   }
 
@@ -2564,15 +2589,16 @@ function updateLiveTimer(){
     if(timerIntervalId){ clearInterval(timerIntervalId); timerIntervalId = null; }
     return;
   }
-  const targetMin = Number(el.dataset.target);
   const now = new Date();
   const nowSeconds = now.getHours()*3600 + now.getMinutes()*60 + now.getSeconds();
-  const targetSeconds = targetMin*60;
-  const diff = targetSeconds - nowSeconds;
   const fmtHMS = (secs) => {
     const h = Math.floor(secs/3600), m = Math.floor((secs%3600)/60), s = secs%60;
     return `${h}:${pad(m)}:${pad(s)}`;
   };
+
+  const targetMin = Number(el.dataset.target);
+  const targetSeconds = targetMin*60;
+  const diff = targetSeconds - nowSeconds;
   if(diff > 0){
     el.textContent = `Noch ${fmtHMS(diff)} bis Feierabend`;
     el.classList.remove('timer-over');
