@@ -2883,11 +2883,30 @@ function attachHandlers(){
 
 /* ---------- Init ---------- */
 
+function applySyncParamsFromUrl(){
+  if(!location.hash) return;
+  try{
+    const params = new URLSearchParams(location.hash.slice(1));
+    const t = params.get('token');
+    const g = params.get('gist');
+    if(t && g){
+      state.settings.syncToken = t;
+      state.settings.syncGistId = g;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+  } catch(err){
+    console.error('Sync-Link Fehler:', err);
+  }
+  // Token aus der sichtbaren Adressleiste entfernen, sobald übernommen
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
 (async function init(){
   viewYear = todayObj.getFullYear();
   viewMonth = todayObj.getMonth();
   summaryYear = todayObj.getFullYear();
   const migrated = await loadState();
+  applySyncParamsFromUrl();
   if(state.settings.syncToken && state.settings.syncGistId){
     await pullFromGist();
   }
