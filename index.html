@@ -2914,6 +2914,21 @@ function applySyncParamsFromUrl(){
   history.replaceState(null, '', location.pathname + location.search);
 }
 
+let backgroundSyncIntervalId = null;
+const BACKGROUND_SYNC_MS = 60000;
+
+function startBackgroundSync(){
+  if(backgroundSyncIntervalId) return;
+  const trySync = async () => {
+    if(document.visibilityState === 'visible' && state.settings.syncToken && state.settings.syncGistId){
+      const ok = await pullFromGist();
+      if(ok && !selectedDate) render(); // Editor offen? Dann nicht mitten im Bearbeiten neu zeichnen
+    }
+  };
+  backgroundSyncIntervalId = setInterval(trySync, BACKGROUND_SYNC_MS);
+  document.addEventListener('visibilitychange', trySync);
+}
+
 (async function init(){
   viewYear = todayObj.getFullYear();
   viewMonth = todayObj.getMonth();
@@ -2926,6 +2941,7 @@ function applySyncParamsFromUrl(){
   if(migrated){ await saveState(); } else { render(); }
   fetchWeather();
   fetchFuelPrices();
+  startBackgroundSync();
 })();
 </script>
 </body>
